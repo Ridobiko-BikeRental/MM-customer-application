@@ -5,11 +5,11 @@ import '../app_colors.dart';
 import 'Order/orderDetails_screen.dart';
 import '../widgets/navigation_bar.dart';
 
-// Helper: Calculate total price of the order
+/// Helper: Calculate total price of the order
 double calculateTotalAmountFromOrder(Map<String, dynamic> order) {
   final items = order['items'] as List<dynamic>? ?? [];
   double subtotal = 0.0;
-  
+
   for (final item in items) {
     final product = item['subCategory'] ?? {};
     final price = (product['pricePerUnit'] is int || product['pricePerUnit'] is double)
@@ -22,51 +22,50 @@ double calculateTotalAmountFromOrder(Map<String, dynamic> order) {
   }
 
   final tax = (subtotal * 0.15).round(); // 15% tax
-  final delivery = subtotal > 0 ? 30.0 : 0.0; // flat 30 delivery charge if subtotal > 0
+  final delivery = subtotal > 0 ? 30.0 : 0.0; // flat delivery charge
 
   final total = subtotal + tax + delivery;
 
   return total;
 }
 
-
 Map<String, dynamic> orderToCard(Map<String, dynamic> order) {
   final itemsList = order['items'] as List<dynamic>? ?? [];
   final amount = calculateTotalAmountFromOrder(order);
-  final orderNo = (order['_id'] ?? '').toString();
+  final rawStatusValue = (order['status'] ?? '').toString();
+  final deliveryDate = order['deliveryDate'] ?? 'Unknown Date';
+  final deliveryTime = order['deliveryTime'] ?? 'Unknown Time';
+
   return {
-    'orderNo': orderNo.length > 7
-        ? orderNo.substring(orderNo.length - 7)
-        : orderNo,
-    'amount': '₹${amount.toStringAsFixed(2)}',
-    'date': order['createdAt'] != null
-        ? DateFormat("dd MMM, hh:mm a")
-            .format(DateTime.parse(order['createdAt']).toLocal())
-        : '',
-    'items': itemsList.fold<int>(
-      0,
-      (c, e) => c + ((e['quantity'] ?? 1) as num).toInt(),
-    ),
-    'status':
-        (order['status'] == 'confirmed' ||
-                order['status'] == 'delivered' ||
-                order['status'] == 'completed')
-            ? 'Order delivered'
-            : (order['status'] == 'cancelled' ? 'Order cancelled' : 'Order placed'),
-    'rawStatus': order['status'],
+    'date': (order['createdAt'] != null && order['createdAt'].toString().isNotEmpty)
+        ? DateFormat("dd MMM, hh:mm a").format(DateTime.tryParse(order['createdAt'] ?? '')?.toLocal() ?? DateTime.now())
+        : 'Unknown Date',
+    'status': ((order['status'] ?? '').toString() == 'confirmed' ||
+               (order['status'] ?? '').toString() == 'delivered' ||
+               (order['status'] ?? '').toString() == 'completed')
+        ? 'Order delivered'
+        : ((order['status'] ?? '').toString() == 'cancelled' ? 'Order cancelled' : 'Order placed'),
+    'rawStatus': rawStatusValue,
+    'orderNo': (order['_id'] ?? 'Unknown Order ID').toString(),
+    'amount': '₹${amount.toStringAsFixed(0)}',
+    'items': itemsList.fold<int>(0, (sum, item) {
+      final qty = (item['quantity'] is int) ? item['quantity'] as int : 1;
+      return sum + qty;
+    }),
+    'deliveryDate': deliveryDate,
+    'deliveryTime': deliveryTime,
   };
 }
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
-  
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final int _selectedIndex = 3; // Keep track of current selected tab index in your State
+  final int _selectedIndex = 3; // current tab index
   List<Map<String, dynamic>> _allOrders = [];
   bool _loading = true;
   String? _error;
@@ -82,12 +81,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _loading = true;
       _error = null;
     });
+
     try {
       final orders = await OrdersApi.fetchOrders();
-      orders?.sort(
-        (a, b) => DateTime.parse(b['createdAt'])
-            .compareTo(DateTime.parse(a['createdAt'])),
-      );
+      orders?.sort((a, b) => DateTime.parse(b['createdAt'])
+          .compareTo(DateTime.parse(a['createdAt'])));
       setState(() {
         _allOrders = orders?.cast<Map<String, dynamic>>() ?? [];
         _loading = false;
@@ -105,14 +103,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        automaticallyImplyLeading: false, // Hides back button
+        automaticallyImplyLeading: false,
         backgroundColor: AppColors.primary,
         elevation: 0,
         title: const Text(
           'History',
           style: TextStyle(
             color: AppColors.buttonText,
-            //fontWeight: FontWeight.bold,
             fontSize: 26,
           ),
         ),
@@ -139,38 +136,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           height: 24,
                         ),
                         itemBuilder: (context, index) {
-                          final order = _allOrders[index];
-                          final cardData = orderToCard(order);
+                          final orderCard = orderToCard(_allOrders[index]);
                           return OrderHistoryCard(
-                            order: cardData,
-                            fullOrder: order,
+                            order: orderCard,
+                            fullOrder: _allOrders[index],
                           );
                         },
                       ),
       ),
-      bottomNavigationBar: MainNavBar(currentIndex: 3),
+      bottomNavigationBar: MainNavBar(currentIndex: _selectedIndex),
     );
   }
-
 }
 
 class OrderHistoryCard extends StatelessWidget {
-  final Map<String, dynamic> order;
-  final Map<String, dynamic> fullOrder; // Pass full order for details screen
+  final Map<String, dynamic> order; // summary card info
+  final Map<String, dynamic> fullOrder; // full order for details
   const OrderHistoryCard({super.key, required this.order, required this.fullOrder});
 
   @override
   Widget build(BuildContext context) {
-    // Status/Color/Icon logic
+    // Status icon and color based on rawStatus
     IconData statusIcon;
     Color statusColor;
 
-    if (order['rawStatus'] == 'delivered' ||
-        order['rawStatus'] == 'confirmed' ||
-        order['rawStatus'] == 'completed') {
+    final rawStatus = (order['rawStatus'] ?? '').toString();
+
+    if (rawStatus == 'delivered' ||
+        rawStatus == 'confirmed' ||
+        rawStatus == 'completed') {
       statusIcon = Icons.check_circle;
       statusColor = Colors.green;
-    } else if (order['rawStatus'] == 'cancelled') {
+    } else if (rawStatus == 'cancelled') {
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
     } else {
@@ -181,7 +178,7 @@ class OrderHistoryCard extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Expanded - order details
+        // Order details left side
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,10 +210,11 @@ class OrderHistoryCard extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
+              )
             ],
           ),
         ),
+        // Right side: amount and details button
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [

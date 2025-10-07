@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:yumquick/widgets/navigation_bar.dart';
 import '../../API/orders_api.dart';
 import '../../app_colors.dart';
-import 'AddReview_screen.dart';
-import '../../models/subcategory.dart';
 
 class MyOrderScreen extends StatefulWidget {
   const MyOrderScreen({super.key});
-
   @override
   State<MyOrderScreen> createState() => _MyOrderScreenState();
 }
 
 class _MyOrderScreenState extends State<MyOrderScreen> {
   int selectedTab = 0; // 0 = Active, 1 = Completed, 2 = Cancelled
-
   List<dynamic> _allOrders = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -25,48 +23,50 @@ class _MyOrderScreenState extends State<MyOrderScreen> {
   }
 
   Future<void> _loadOrders() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
     try {
       final orders = await OrdersApi.fetchOrders();
-      orders?.sort((a, b) => DateTime.parse(b['createdAt']).compareTo(DateTime.parse(a['createdAt'])));
+      orders?.sort((a, b) {
+        final aDate = (a['createdAt'] != null && a['createdAt'].toString().isNotEmpty)
+            ? DateTime.tryParse(a['createdAt'].toString())
+            : null;
+        final bDate = (b['createdAt'] != null && b['createdAt'].toString().isNotEmpty)
+            ? DateTime.tryParse(b['createdAt'].toString())
+            : null;
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        return bDate.compareTo(aDate);
+      });
       setState(() {
         _allOrders = orders ?? [];
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+      setState(() { _errorMessage = e.toString(); _isLoading = false; });
     }
   }
 
   List<dynamic> get filteredOrders {
-    String status;
-    if (selectedTab == 0) {
-      status = 'pending';
-    } else if (selectedTab == 1) status = 'confirmed';
-    else status = 'cancelled';
-    return _allOrders.where((o) => o['status'] == status).toList();
+  if (selectedTab == 0) {
+    // Active: pending or in-progress statuses
+    return _allOrders.where((o) =>
+      ((o['status'] ?? '').toString() == 'pending'
+    )).toList();
+  } else if (selectedTab == 1) {
+    // Completed: delivered, confirmed, or completed
+    return _allOrders.where((o) {
+      final s = (o['status'] ?? '').toString();
+      return s == 'confirmed' || s == 'delivered' || s == 'completed';
+    }).toList();
+  } else {
+    // Cancelled
+    return _allOrders.where((o) =>
+      ((o['status'] ?? '').toString() == 'cancelled')
+    ).toList();
   }
+}
 
-  // Flattened list of maps with each individual item for every order
-  List<Map<String, dynamic>> get flattenedOrderItems {
-    final List<Map<String, dynamic>> flat = [];
-    for (final order in filteredOrders) {
-      final List items = order['items'] ?? [];
-      for (final item in items) {
-        flat.add({
-          'order': order,
-          'item': item,
-        });
-      }
-    }
-    return flat;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,53 +90,54 @@ class _MyOrderScreenState extends State<MyOrderScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.only(top: 0, bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                _tabButton('Active', 0),
-                const SizedBox(width: 16),
-                _tabButton('Completed', 1),
-                const SizedBox(width: 16),
-                _tabButton('Cancelled', 2),
-              ],
-            ),
-          ),
+          _buildTabs(),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : (_errorMessage != null)
-                    ? Center(child: Text('Error: $_errorMessage'))
-                    : flattenedOrderItems.isEmpty
-                        ? const Center(child: Text('No orders found'))
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            separatorBuilder: (_, __) => const SizedBox(height: 16),
-                            itemCount: flattenedOrderItems.length,
-                            itemBuilder: (context, index) {
-                              final entry = flattenedOrderItems[index];
-                              final order = entry['order'];
-                              final item = entry['item'];
-                              return _orderCard(order, item);
-                            },
-                          ),
+                  ? Center(child: Text('Error: $_errorMessage'))
+                  : filteredOrders.isEmpty
+                    ? const Center(child: Text('No orders found'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        itemCount: filteredOrders.length,
+                        itemBuilder: (context, idx) {
+                          final order = filteredOrders[idx];
+                          return OrderCard(
+                            order: order,
+                            onCancel: () => _loadOrders(),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(context, 3),
+      bottomNavigationBar: MainNavBar(currentIndex: 1),
+    );
+  }
+
+  Widget _buildTabs() {
+    return Container(
+      margin: const EdgeInsets.only(top: 0, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          _tabButton('Active', 0),
+          const SizedBox(width: 16),
+          _tabButton('Completed', 1),
+          const SizedBox(width: 16),
+          _tabButton('Cancelled', 2),
+        ],
+      ),
     );
   }
 
   Widget _tabButton(String label, int idx) {
-    final isSelected = idx == selectedTab;
+    final isSelected = selectedTab == idx;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedTab = idx;
-        });
-      },
+      onTap: () => setState(() => selectedTab = idx),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
@@ -154,295 +155,232 @@ class _MyOrderScreenState extends State<MyOrderScreen> {
       ),
     );
   }
+  }
 
-  Widget _orderCard(dynamic order, dynamic item) {
-    final subCategory = item['subCategory'];
-    final imageUrl = subCategory != null && subCategory['imageUrl'] != null
-        ? subCategory['imageUrl']
-        : 'https://via.placeholder.com/150';
-    final quantity = item['quantity'] ?? 1;
+
+class OrderCard extends StatelessWidget {
+  final dynamic order;
+  final VoidCallback? onCancel;
+  const OrderCard({super.key, required this.order, this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final List items = order['items'] ?? [];
+    final orderId = (order['orderId'] ?? order['_id'] ?? '').toString();
+    final status = (order['status'] ?? '').toString();
+    final isPending = status == 'pending';
+    final isCompleted = status == 'confirmed' || status == 'delivered' || status == 'completed';
+    final isCancelled = status == 'cancelled';
+    final orderDate = order['createdAt'] != null && order['createdAt'].toString().isNotEmpty
+    ? DateFormat('dd MMM, h:mma').format(DateTime.parse(order['createdAt']).toLocal())
+    : '--';
+final deliveryDateRaw = order['deliveryDate'];
+final deliveryDate = deliveryDateRaw != null && deliveryDateRaw.toString().isNotEmpty
+    ? DateFormat('dd MMM, h:mma').format(DateTime.parse(deliveryDateRaw.toString()).toLocal())
+    : '--';
+
+
+
+    double total = 0.0;
+    for (final item in items) {
+      final subCategory = item['subCategory'] ?? {};
+      final price = (subCategory['pricePerUnit'] is num)
+          ? (subCategory['pricePerUnit']).toDouble()
+          : 0.0;
+      final qty = (item['quantity'] is int ? item['quantity'] : 1);
+      total += price * qty;
+    }
+    final totalDisplay = '₹${total.toStringAsFixed(2)}';
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.accent.withOpacity(0.2), width: 1),
+        border: Border.all(color: AppColors.accent.withOpacity(0.18), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 8,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(10),
-      child: Row(
+      padding: const EdgeInsets.all(14),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.network(
-              imageUrl,
-              height: 70,
-              width: 70,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 70,
-                  width: 70,
-                  color: Colors.grey[200],
-                  child: const Icon(
-                    Icons.image_not_supported,
-                    color: Colors.grey,
-                    size: 36,
-                  ),
-                );
-              },
-            ),
+          // Order ID and time
+          Row(
+            children: [
+              Text(
+                'Order ID: $orderId',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                orderDate,
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Title and price row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        subCategory != null && subCategory['name'] != null
-                            ? subCategory['name']
-                            : 'No name',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          const SizedBox(height: 10),
+          // Items List
+          ...items.map((item) {
+            final subCategory = item['subCategory'] ?? {};
+            final name = (subCategory['name'] ?? '').toString();
+            final price = (subCategory['pricePerUnit'] ?? '').toString();
+            final qty = item['quantity'] ?? 1;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4.0),
+              child: Row(
+                children: [
+                  Icon(Icons.check_box, color: Colors.green, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '$qty x $name',
+                      style: const TextStyle(fontSize: 15),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      subCategory != null && subCategory['pricePerUnit'] != null
-                          ? '₹${subCategory['pricePerUnit']}'
-                          : '',
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Text(
-                      order['createdAt'] != null
-                          ? formatDateTimeSimple(order['createdAt'])
-                          : '',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '$quantity item${quantity > 1 ? 's' : ''}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                // Buttons
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    if (order['status'] == 'confirmed') ...[
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          minimumSize: const Size(0, 32),
-                        ),
-                        onPressed: () {
-                          final List items = order['items'] ?? [];
-                          final subCategoryObj = items.isNotEmpty
-                              ? SubCategory.fromJson(items[0]['subCategory'])
-                              : null;
-                          if (subCategoryObj != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ReviewScreen(
-                                  order: order,
-                                  subCategory: subCategoryObj,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: const Text(
-                          'Leave a review',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          minimumSize: const Size(0, 32),
-                        ),
-                        onPressed: () {
-                          // Implement Order Again logic here
-                        },
-                        child: const Text(
-                          'Order Again',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
-                    ],
-                    if (order['status'] == 'pending') ...[
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          minimumSize: const Size(0, 32),
-                        ),
-                        onPressed: () async {
-                          final bool? didCancel = await Navigator.pushNamed(
+                  ),
+                  Text('₹${int.tryParse(price) != null ? (int.parse(price) * qty).toString() : price}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+                ],
+              ),
+            );
+          }),
+          const Divider(height: 18, thickness: 0.6),
+          Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          isCompleted
+              ? 'Delivered'
+              : isPending
+                ? 'Pending'
+                : isCancelled
+                  ? 'Cancelled'
+                  : status,
+          style: TextStyle(
+            color: isCompleted
+                ? Colors.green
+                : isPending
+                  ? Colors.orange
+                  : isCancelled
+                    ? Colors.red
+                    : Colors.black54,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Order placed: $orderDate',
+          style: const TextStyle(fontSize: 13, color: Colors.black54),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Order delivery: $deliveryDate',
+          style: const TextStyle(fontSize: 13, color: Colors.black54),
+        ),
+      ],
+    ),
+    Text(
+      totalDisplay,
+      style: const TextStyle(
+        color: AppColors.primary,
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+      ),
+    ),
+  ],
+),
+          const SizedBox(height: 14),
+          // Buttons
+          Row(
+            children: [
+              if (isPending)
+                ...[
+                  _OrderButton(
+                    label: 'Cancel Order',
+                    onPressed: () async {
+                      final bool? didCancel = await Navigator.pushNamed(
                             context,
                             '/CancelOrder',
-                            arguments: {'orderId': order['_id']},
+                            arguments: {'orderId': order['id'] ?? order['_id']},
                           ) as bool?;
-                          if (didCancel == true) _loadOrders();
-                        },
-                        child: const Text(
-                          'Cancel Order',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          minimumSize: const Size(0, 32),
-                        ),
-                        onPressed: () {
-                          // Implement Track Driver logic here
-                        },
-                        child: const Text(
-                          'Track Driver',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-          ),
+                      if (didCancel == true && onCancel != null) onCancel!();
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  _OrderButton(
+                    label: 'Track',
+                    onPressed: () {
+                      final orderIdVal = order['id'] ?? order['_id'];
+                      if (orderIdVal != null && orderIdVal.toString().isNotEmpty) {
+                        Navigator.pushNamed(
+                          context,
+                          '/tracking',
+                          arguments: orderIdVal,
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Order ID not available!')),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              if (isCompleted)
+                ...[
+                  _OrderButton(
+                    label: 'Leave a review',
+                    onPressed: () {
+                      // Implement review navigation as needed
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  _OrderButton(
+                    label: 'Order Again',
+                    onPressed: () {
+                      // Implement order again logic as needed
+                    },
+                  ),
+                ],
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _OrderButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  const _OrderButton({required this.label, required this.onPressed});
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
         ),
-      );
-  }
-
-  String formatDateTimeSimple(String dateTimeString) {
-    try {
-      final dateTime = DateTime.parse(dateTimeString).toLocal();
-      final months = [
-        '',
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      String day = dateTime.day.toString().padLeft(2, '0');
-      String month = months[dateTime.month];
-      int hour = dateTime.hour;
-      final minute = dateTime.minute.toString().padLeft(2, '0');
-      String period = 'am';
-      int displayHour = hour;
-      if (hour == 0) {
-        displayHour = 12;
-      } else if (hour == 12) {
-        period = 'pm';
-        displayHour = 12;
-      } else if (hour > 12) {
-        displayHour = hour - 12;
-        period = 'pm';
-      }
-      return '$day $month, ${displayHour.toString().padLeft(2, '0')}:$minute $period';
-    } catch (e) {
-      return dateTimeString;
-    }
-  }
-
-  Widget _buildBottomNav(BuildContext context, int selectedIndex) {
-    return BottomNavigationBar(
-      backgroundColor: AppColors.primary,
-      selectedItemColor: AppColors.buttonText,
-      unselectedItemColor: Colors.white54,
-      currentIndex: selectedIndex,
-      type: BottomNavigationBarType.fixed,
-      showSelectedLabels: false,
-      showUnselectedLabels: false,
-      onTap: (index) {
-        // Implement navigation logic here
-      },
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.restaurant_menu), label: 'Menu'),
-        BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Favorites'),
-        BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Orders'),
-        BottomNavigationBarItem(icon: Icon(Icons.support_agent), label: 'Help'),
-      ],
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: const Size(0, 32),
+      ),
+      onPressed: onPressed,
+      child: Text(
+        label, style: const TextStyle(fontSize: 13),
+      ),
     );
   }
 }

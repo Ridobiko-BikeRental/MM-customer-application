@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,11 +59,14 @@ class OrdersApi {
     // Safely extract the order _id, handling any missing field scenario
     final order = data['order'];
     final orderId = order != null && order['_id'] != null ? order['_id'] : null;
+    final customerOrderId = order != null && order['orderId'] != null ? order['orderId'] : null;
+    log('Extracted orderId: $orderId, customerOrderId: $customerOrderId');
 
     // Return the full response with orderId added
     return {
       ...data,
-      'orderId': orderId,    // You can now use this easily in your UI/logic
+      'orderId': orderId, 
+      'customerOrderId':  customerOrderId,  // You can now use this easily in your UI/logic
     };
       
     } else {

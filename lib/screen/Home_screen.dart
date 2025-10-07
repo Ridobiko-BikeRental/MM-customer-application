@@ -34,9 +34,12 @@ class _Home_screenState extends State<Home_screen> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-    final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
-    categoryProvider.loadCategoriesWithSubcategories();
-  });
+      final categoryProvider = Provider.of<CategoryProvider>(
+        context,
+        listen: false,
+      );
+      categoryProvider.loadCategoriesWithSubcategories();
+    });
   }
 
   @override
@@ -66,7 +69,6 @@ class _Home_screenState extends State<Home_screen> {
     final provider = Provider.of<CategoryProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey();
-    
 
     // Get all items and apply filtering based on search query
     final allItems = provider.subCategoriesForSelected;
@@ -78,19 +80,16 @@ class _Home_screenState extends State<Home_screen> {
             final query = _searchQuery.toLowerCase();
             return title.contains(query) || desc.contains(query);
           }).toList();
-   // print("Total products for selection: ${filteredItems.length}");
+    // print("Total products for selection: ${filteredItems.length}");
     //log("Total products for selection: ${filteredItems.length}");
-   // print("Building HomeScreen with selected category: ${provider.selectedCategory}");
-   //print("Total categories available: ${provider.categories.length}");
+    // print("Building HomeScreen with selected category: ${provider.selectedCategory}");
+    //print("Total categories available: ${provider.categories.length}");
     //print("Total chip categories: ${provider.chipCategories.length}");
     //print("Total subcategories for selected: ${provider.subCategoriesForSelected.length}");
-
-
 
     return Scaffold(
       key: scaffoldKey,
       drawer: ProfileDrawer(context),
-      endDrawer: CartScreen(),
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.primary,
@@ -116,7 +115,7 @@ class _Home_screenState extends State<Home_screen> {
                   child: InkWell(
                     customBorder: CircleBorder(),
                     onTap: () {
-                      showCartSideDrawer(context);
+                      Navigator.pushNamed(context, '/checkout');
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
@@ -236,11 +235,40 @@ class _Home_screenState extends State<Home_screen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Products',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Products',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              IconButton(
+                icon: Icon(Icons.tune, color: AppColors.primary),
+                onPressed: () async {
+                  final result = await Navigator.pushNamed(
+                    context,
+                    '/filter_screen',
+                  );
+                  if (result != null && result is Map<String, dynamic>) {
+                    final category = result['category'] as String?;
+                    final rating = result['rating'] as double?;
+                    final price = result['price'] as double?;
+
+                    // Apply these filters in your home screen provider/state
+                    Provider.of<CategoryProvider>(
+                      context,
+                      listen: false,
+                    ).applyFilters(
+                      category: category,
+                      rating: rating,
+                      price: price,
+                    );
+                  }
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 8),
@@ -270,7 +298,7 @@ class _Home_screenState extends State<Home_screen> {
       context,
     ).subCategoryFavoriteIds;
     final isFav = favoriteIds.contains(subCat.id);
-    final avgRating = getAverageRating(subCat.reviews);
+    //final avgRating = getAverageRating(subCat.reviews);
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -279,7 +307,6 @@ class _Home_screenState extends State<Home_screen> {
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          //mainAxisSize: MainAxisSize.min,
           children: [
             Stack(
               children: [
@@ -333,12 +360,12 @@ class _Home_screenState extends State<Home_screen> {
                   right: 6,
                   child: Consumer<FavoriteProvider>(
                     builder: (context, favProvider, _) {
-                      final isFav = favProvider.isFavorite(subCat.id);
+                      final isFav = favProvider.isFavorite((subCat.id).toString());
                       return GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onTap: () async {
                           // await Provider.of<FavoriteProvider>(context, listen: false).toggleFavorite(subCat.id);
-                          await favProvider.toggleFavorite(subCat.id);
+                          await favProvider.toggleFavorite((subCat.id).toString());
                         },
                         child: Material(
                           color: Colors.transparent,
@@ -346,13 +373,78 @@ class _Home_screenState extends State<Home_screen> {
                             radius: 14,
                             backgroundColor: Colors.white.withOpacity(0.3),
                             child: Icon(
-                              isFav ? Icons.favorite : Icons.favorite_border_sharp,
+                              isFav
+                                  ? Icons.favorite
+                                  : Icons.favorite_border_sharp,
                               color: isFav ? Colors.red : AppColors.background,
                             ),
                           ),
                         ),
                       );
                     },
+                  ),
+                ),
+
+                // Rating block
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pushNamed(
+                              context,
+                              '/SeeReviews',
+                              arguments: subCat,
+                            );
+                          },
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size(0, 0),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.star,
+                                color: Colors.yellowAccent,
+                                size: 18,
+                              ),
+                              SizedBox(width: 4),
+                              /* Text(
+                                avgRating > 0
+                                    ? avgRating.toStringAsFixed(1)
+                                    : 'No rating',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ), */
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                       /* Text(
+                          '(${subCat.reviews.length})',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ), */
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -372,7 +464,16 @@ class _Home_screenState extends State<Home_screen> {
               overflow: TextOverflow.ellipsis,
             ),
             SizedBox(height: 6),
-            Row(
+            Text(
+              'MinQyt: ${subCat.minQty.toString()}',
+              style: const TextStyle(fontSize: 12, color: Colors.black),
+              //maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            SizedBox(height: 2.5),
+
+            //Reviews
+            /* Row(
               children: [
                 TextButton(
                   onPressed: () {
@@ -411,7 +512,7 @@ class _Home_screenState extends State<Home_screen> {
                   style: const TextStyle(color: Colors.black54, fontSize: 12),
                 ),
               ],
-            ),
+            ), */
             //const Spacer(),
             _controlsRow(subCat),
           ],
@@ -422,6 +523,14 @@ class _Home_screenState extends State<Home_screen> {
 
   // Controls row showing price and buttons
   Widget _controlsRow(dynamic subCat) {
+    final bool isOutOfStock = !(subCat.available ?? true);
+    String priceTypeLabel = subCat.priceType.toLowerCase() == 'gram'
+        ? 'gram'
+        : 'unit';
+    String explainText = subCat.priceType.toLowerCase() == 'gram'
+        ? '1 unit = 100gm'
+        : '1 unit = N/A';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -429,79 +538,109 @@ class _Home_screenState extends State<Home_screen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             subCat.discount > 0
-                ? Row(
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '₹${subCat.pricePerUnit}',
-                        style: const TextStyle(
+                        '₹${subCat.pricePerUnit}/${priceTypeLabel}',
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.black54,
                           decoration: TextDecoration.lineThrough,
+                          fontSize: 24, // try larger, e.g., 24 or 28
                         ),
                       ),
-                      const SizedBox(width: 6),
                       Text(
-                        '₹${subCat.discountedPrice}',
-                        style: const TextStyle(
+                        '₹${subCat.discountedPrice}/${priceTypeLabel}',
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.deepOrange,
+                          fontSize: 28, // try larger, e.g., 28
                         ),
+                      ),
+                      SizedBox(height: 2.5),
+                      Text(
+                        explainText,
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
                       ),
                     ],
                   )
-                : Text(
-                    '₹${subCat.pricePerUnit}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '₹${subCat.pricePerUnit}/${priceTypeLabel}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        explainText,
+                        style: TextStyle(fontSize: 11, color: Colors.black54),
+                      ),
+                    ],
                   ),
-            Row(
-              children: [
-                SizedBox(width: 10),
-                TextButton(
-                  onPressed: () {
-                    Provider.of<CartProvider>(
-                      context,
-                      listen: false,
-                    ).addToCart(subCat);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text("Added to cart")));
-                    showCartSideDrawer(context);
-                  },
-                  style: TextButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.buttonText,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    minimumSize: Size(0, 20),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text('Order', style: TextStyle(fontSize: 16)),
-                ),
-                SizedBox(width: 0),
-                IconButton(
-                  icon: Icon(
-                    Icons.add_circle,
-                    color: AppColors.primary,
-                    size: 30,
-                  ),
-                  onPressed: () {
-                    Provider.of<CartProvider>(
-                      context,
-                      listen: false,
-                    ).addToCart(subCat);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text("Added to cart")));
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                    maxWidth: 22,
-                    maxHeight: 22,
+            if (isOutOfStock)
+              const Padding(
+                padding: EdgeInsets.only(left: 8.0),
+                child: Text(
+                  'Out of Stock',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
-              ],
-            ),
+              )
+            else
+              Row(
+                children: [
+                  SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      Provider.of<CartProvider>(
+                        context,
+                        listen: false,
+                      ).addToCart(subCat);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Added to cart")),
+                      );
+                      Navigator.pushNamed(context, '/checkout');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                    ),
+                    child: const Text('Order', style: TextStyle(fontSize: 16)),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.add_circle,
+                      color: AppColors.primary,
+                      size: 39,
+                    ),
+                    onPressed: () {
+                      Provider.of<CartProvider>(
+                        context,
+                        listen: false,
+                      ).addToCart(subCat);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Added to cart")),
+                      );
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                      maxWidth: 22,
+                      maxHeight: 36,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ],
@@ -509,7 +648,7 @@ class _Home_screenState extends State<Home_screen> {
   }
 
   // cart drawer
-  void showCartSideDrawer(BuildContext context) {
+  /* void showCartSideDrawer(BuildContext context) {
     showGeneralDialog(
       barrierLabel: "Cart",
       barrierDismissible: true,
@@ -550,7 +689,7 @@ class _Home_screenState extends State<Home_screen> {
       },
       transitionDuration: Duration(milliseconds: 350),
     );
-  }
+  } */
 
   // Drawer widget
   Widget ProfileDrawer(BuildContext context) {

@@ -66,106 +66,127 @@ class AuthProvider extends ChangeNotifier {
 
   // LOGIN method
   Future<void> login(String email, String password) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+  _isLoading = true;
+  _errorMessage = null;
+  notifyListeners();
 
-    final url = Uri.parse('https://mm-food-backend.onrender.com/api/users/login');
+  final url = Uri.parse('https://munchmartfoods.com/user/login.php');
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
-      );
+  try {
+    final request = http.MultipartRequest('POST', url);
+    request.fields['email'] = email;
+    request.fields['password'] = password;
 
-      print('Sending login request with email: $email');
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+    print('Sending login request with email: $email');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _token = data['token']?.toString().trim();
-        if (_token != null) {
-          await _saveTokenToPrefs(_token!);
-        }
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    print('Response status: ${response.statusCode}');
+    print('Response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      // PHP payload shape:
+      // {"status":"success","message":"Login successful","token":"<JWT>","user":{...}}
+      final token = data['token']?.toString().trim();
+      if (token == null || token.isEmpty) {
+        _errorMessage = 'Login failed: token missing in response';
         notifyListeners();
-        print('✅ Login successful for email: $email, token: $_token');
-
-        // Fetch user profile data
-        await getUserData();
-      } else {
-        final data = jsonDecode(response.body);
-        _errorMessage = data['message'] ?? 'Login failed';
-        notifyListeners();
-        print('❌ Login failed for email: $email');
-        print('Error message from server: $_errorMessage');
+        print('❌ Login token missing');
+        return;
       }
-    } catch (e) {
-      _errorMessage = 'An error occurred. Please try again.';
+
+      _token = token;
+      await _saveTokenToPrefs(_token!);
+
+      // Optionally hydrate user fields from the response to avoid a second call
+      final user = data['user'];
+      if (user is Map) {
+        _userFullName = user['name']?.toString()?.trim();
+        _userEmail = user['email']?.toString()?.trim();
+        _userMobile = user['mobile']?.toString()?.trim();
+      }
+
       notifyListeners();
-      print('❌ Exception during login: $e');
-    } finally {
-      _isLoading = false;
+      print('✅ Login successful for email: $email, token: $_token');
+
+      // Fetch user profile data from server to stay source-of-truth
+      await getUserData();
+    } else {
+      final data = jsonDecode(response.body);
+      _errorMessage = data['message']?.toString() ?? 'Login failed';
       notifyListeners();
+      print('❌ Login failed for email: $email');
+      print('Error message from server: $_errorMessage');
     }
+  } catch (e) {
+    _errorMessage = 'An error occurred. Please try again.';
+    notifyListeners();
+    print('❌ Exception during login: $e');
+  } finally {
+    _isLoading = false;
+    notifyListeners();
   }
+}
+
 
   // SIGNUP method
   Future<void> signup(String email, String password, String fullName, String mobile) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+  _isLoading = true;
+  _errorMessage = null;
+  notifyListeners();
 
-    final url = Uri.parse('https://mm-food-backend.onrender.com/api/users/register');
+  // Update: PHP backend endpoint
+  final url = Uri.parse('https://munchmartfoods.com/user/register.php');
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-          'fullName': fullName,
-          'mobile': mobile,
-        }),
-      );
+  try {
+    // PHP backend needs form data, not JSON
+    final request = http.MultipartRequest('POST', url);
+    request.fields['name'] = fullName;
+    request.fields['email'] = email;
+    request.fields['password'] = password;
+    request.fields['mobile'] = mobile;
 
-      print('📤 Sending signup request with: fullName=$fullName, email=$email, mobile=$mobile');
-      print('📥 Response status: ${response.statusCode}');
-      print('📥 Response body: ${response.body}');
+    print('📤 Sending signup request with: fullName=$fullName, email=$email, mobile=$mobile');
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        _signupSuccess = true;
-        _token = data['token']?.toString().trim();
-        if (_token != null) {
-          await _saveTokenToPrefs(_token!);
-        }
-        notifyListeners();
-        print('✅ Signup successful for email: $email, token: $_token');
+    // Send request and get response
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
 
-        // Fetch user profile data
-        await getUserData();
-      } else {
-        final data = jsonDecode(response.body);
-        _errorMessage = data['message'] ?? 'Signup failed';
-        notifyListeners();
-        print('❌ Signup failed for email: $email');
-        print('⚠️ Error: $_errorMessage');
+    print('📥 Response status: ${response.statusCode}');
+    print('📥 Response body: ${response.body}');
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      _signupSuccess = true;
+      _token = data['token']?.toString()?.trim();
+      if (_token != null) {
+        await _saveTokenToPrefs(_token!);
       }
-    } catch (e) {
-      _errorMessage = 'Could not connect to the server';
       notifyListeners();
-      print('❌ Exception during signup: $e');
-    } finally {
-      _isLoading = false;
+      print('✅ Signup successful for email: $email, token: $_token');
+
+      // Fetch user profile data
+      await getUserData();
+    } else {
+      final data = jsonDecode(response.body);
+      _errorMessage = data['message'] ?? 'Signup failed';
       notifyListeners();
+      print('❌ Signup failed for email: $email');
+      print('⚠️ Error: $_errorMessage');
     }
+  } catch (e) {
+    _errorMessage = 'Could not connect to the server';
+    notifyListeners();
+    print('❌ Exception during signup: $e');
+  } finally {
+    _isLoading = false;
+    notifyListeners();
   }
+}
+
 
   
   //GET user data

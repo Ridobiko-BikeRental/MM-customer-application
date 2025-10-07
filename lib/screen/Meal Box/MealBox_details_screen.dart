@@ -80,7 +80,7 @@ class MealBoxDetailsScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Added to cart')),
                   );
-                  //Navigator.pushNamed(context, '/cart'); // Assume /cart route exists
+                  Navigator.pushNamed(context, '/checkout'); // Assume /cart route exists
                 },
                 child: const Text('Add to cart'),
               ),

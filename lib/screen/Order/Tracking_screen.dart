@@ -1,25 +1,106 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../app_colors.dart';
 import '../../widgets/navigation_bar.dart';
 import '../../API/tracking_api.dart';
 import '../../API/auth_api.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class TrackingScreen extends StatefulWidget {
-  //final String orderId;
-  const TrackingScreen({super.key, /*required this.orderId*/});
+  final String orderId;
+  final bool isMealBox;
+
+  const TrackingScreen({
+    super.key,
+    required this.orderId,
+    this.isMealBox = false,
+  });
+
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
 
 class _TrackingScreenState extends State<TrackingScreen> {
   late Future<List<OrderTrackingStatus>> _trackingFuture;
+  IO.Socket? _socket;
 
   @override
   void initState() {
     super.initState();
-    final authToken = Provider.of<AuthProvider>(context, listen: false).token ?? '';
-    _trackingFuture = TrackingApi.fetchOrderTrackings(authToken);
+    _fetchStatus();
+    _connectSocket();
+  }
+
+    void _connectSocket() {
+    _socket = IO.io('https://mm-food-backend.onrender.com', <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': true,
+    });
+
+    _socket!.onConnect((_) {
+      print('Socket connected');
+      // Join the correct room for real-time tracking
+      if (widget.isMealBox) {
+        log('Joining mealbox order room for orderId: ${widget.orderId}');
+        _socket!.emit('joinMealBoxOrderRoom', widget.orderId);
+      } else {
+        log('Joining order room for orderId: ${widget.orderId}');
+        _socket!.emit('joinOrderRoom', widget.orderId);
+      }
+    });
+
+    // Listen for mealbox order tracking updates
+    _socket!.on('mealboxOrderTrackingUpdated', (data) {
+      log('Received mealboxOrderTrackingUpdated: $data');
+      if (widget.isMealBox &&
+          data != null &&
+          data['order'] != null &&
+          data['order']['_id'] == widget.orderId) {
+        if (mounted) _fetchStatus();
+      }
+    });
+
+    // Listen for normal order tracking updates
+    _socket!.on('orderTrackingUpdated', (data) {
+      print('Received orderTrackingUpdated: $data');
+      if (!widget.isMealBox &&
+          data != null &&
+          data['order'] != null &&
+          data['order']['_id'] == widget.orderId) {
+        if (mounted) _fetchStatus();
+      }
+    });
+
+    _socket!.onDisconnect((_) => print('Socket disconnected'));
+  }
+
+  @override
+  void dispose() {
+    _socket?.off('mealboxOrderTrackingUpdated');
+    _socket?.off('orderTrackingUpdated');
+    _socket?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchStatus() async {
+    final authToken =
+        Provider.of<AuthProvider>(context, listen: false).token ?? '';
+
+    setState(() {
+      if (widget.isMealBox) {
+        _trackingFuture = TrackingApi.fetchMealBoxTrackingById(
+          authToken,
+          widget.orderId,
+        );
+      } else {
+        _trackingFuture = TrackingApi.fetchOrderTrackingById(
+          authToken,
+          widget.orderId,
+        );
+      }
+    });
   }
 
   @override
@@ -41,10 +122,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
           style: TextStyle(
             color: AppColors.buttonText,
             fontSize: 24,
-            //fontWeight: FontWeight.bold,
           ),
         ),
-        
       ),
       body: FutureBuilder<List<OrderTrackingStatus>>(
         future: _trackingFuture,
@@ -60,31 +139,58 @@ class _TrackingScreenState extends State<TrackingScreen> {
             );
           }
           final data = snapshot.data ?? [];
-          final currentStatus = data.isNotEmpty ? data.last : null;
+          final currentStatus = data.isNotEmpty ? data.first : null;
 
-          // Determine which step is active
           final statusOrder = [
             "placed",
+            "pending",
             "confirmed",
             "processing",
             "delivered"
           ];
+
           final statusText = {
-            "placed": "Order Placed",
+             "placed": "Order Placed",
+            "pending": "Order Pending",
             "confirmed": "Order Confirmed",
             "processing": "Order Processed",
-            "delivered": "Ready to Deliver",
+            "delivered": "delivered",
           };
           final statusSubtext = {
+            "pending": "Your order is pending confirmation.",
             "placed": "We have received your order.",
             "confirmed": "Your order has been confirmed.",
             "processing": "We are preparing your order.",
             "delivered": "Your order is ready for pickup.",
           };
-          final forcedStatus = 'processing';
-int activeStep = statusOrder.indexOf(forcedStatus);
 
-             
+          int statusIndex = currentStatus != null
+              ? statusOrder.indexOf(currentStatus.status.toLowerCase())
+              : 0;
+
+          int activeStep = statusIndex;
+          if (statusOrder[statusIndex] == "confirmed") {
+            activeStep = 3; // processing
+          }
+          if (statusOrder[statusIndex] == "delivered") {
+            activeStep = 4;
+          }
+
+          String? deliveryDate = currentStatus?.deliveryDate;
+          String? deliveryTime = currentStatus?.deliveryTime;
+          bool isDeliveredToday = false;
+          if (deliveryDate != null && deliveryDate.isNotEmpty) {
+            final today = DateTime.now();
+            final deliveredDateParsed = DateTime.tryParse(deliveryDate);
+            if (deliveredDateParsed != null &&
+                deliveredDateParsed.year == today.year &&
+                deliveredDateParsed.month == today.month &&
+                deliveredDateParsed.day == today.day) {
+              isDeliveredToday = true;
+            }
+          }
+
+          String? orderNumber = currentStatus?.orderId ?? widget.orderId;
 
           return SingleChildScrollView(
             child: Padding(
@@ -99,53 +205,70 @@ int activeStep = statusOrder.indexOf(forcedStatus);
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("ESTIMATED TIME",
-                              style: TextStyle(
-                                fontSize: 16,
-                          color: AppColors.text.withOpacity(0.7),
-                              )),
                           Text(
-                            currentStatus?.deliveryTime.isNotEmpty == true
-                                ? currentStatus!.deliveryTime
-                                : "--",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                            isDeliveredToday ? "ARRIVING TODAY" : "ESTIMATED TIME",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppColors.text,
+                            ),
+                          ),
+                          Text(
+                            isDeliveredToday
+                                ? ""
+                                : (deliveryTime?.isNotEmpty == true ? deliveryTime! : "--"),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
                         ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text("ORDER NUMBER",
-                              style: TextStyle(
-                                fontSize: 16,
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.bold,
-                              )),
-                          /*Text(
-                            "#${widget.orderId}",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                          ),*/
+                          Text(
+                            "ORDER NUMBER",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            orderNumber,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
                   SizedBox(height: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("ESTIMATED DATE",
-                           style: TextStyle(
-                             fontSize: 16,
-                          color: AppColors.text.withOpacity(0.7),
-                           )),
-                      Text(
-                            currentStatus?.deliveryDate.isNotEmpty == true
-                                ? currentStatus!.deliveryDate
-                                : "--",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  if (!isDeliveredToday)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "ESTIMATED DATE",
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: AppColors.text,
                           ),
-                    ],
-                  ),
+                        ),
+                        Text(
+                          deliveryDate?.isNotEmpty == true
+                              ? deliveryDate!
+                              : "--",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 24),
                   // Stepper timeline
                   _OrderTrackingStepper(
@@ -153,6 +276,7 @@ int activeStep = statusOrder.indexOf(forcedStatus);
                     statusOrder: statusOrder,
                     statusText: statusText,
                     statusSubtext: statusSubtext,
+                    realStatusIndex: statusIndex,
                   ),
                 ],
               ),
@@ -167,75 +291,94 @@ int activeStep = statusOrder.indexOf(forcedStatus);
 
 class _OrderTrackingStepper extends StatelessWidget {
   final int activeStep;
+  final int realStatusIndex;
   final List<String> statusOrder;
   final Map<String, String> statusText;
   final Map<String, String> statusSubtext;
+
   const _OrderTrackingStepper({
     required this.activeStep,
     required this.statusOrder,
     required this.statusText,
     required this.statusSubtext,
+    required this.realStatusIndex,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: List.generate(statusOrder.length, (idx) {
-        final active = idx <= activeStep;
-        final isLast = idx == statusOrder.length - 1;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Column(
-              children: [
-                Container(
-                  margin: EdgeInsets.only(top: 2),
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: active ? (idx == activeStep ? Colors.blue : Colors.green) : Colors.grey[300],
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                if (!isLast)
+      children: List.generate(
+        statusOrder.length,
+        (idx) {
+          final bool isCompleted = idx < activeStep;
+          final bool isActive = idx == activeStep;
+          final bool isLast = idx == statusOrder.length - 1;
+          Color nodeColor = isCompleted
+              ? Colors.green
+              : (isActive ? Colors.blue : Colors.grey[300]!);
+          Color lineColor = isCompleted
+              ? Colors.green
+              : (isActive ? Colors.blue : Colors.grey[300]!);
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                children: [
                   Container(
-                    width: 3,
-                    height: 36,
-                    color: active ? Colors.green : Colors.grey[300],
+                    margin: EdgeInsets.only(top: 2),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: nodeColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: isCompleted
+                        ? Icon(Icons.check, size: 14, color: Colors.white)
+                        : null,
                   ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 18.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      statusText[statusOrder[idx]]!,
-                      style: TextStyle(
-                        color: idx == activeStep
-                            ? Colors.blue
-                            : (active ? Colors.black : Colors.grey),
-                        fontWeight: idx == activeStep ? FontWeight.bold : FontWeight.w600,
-                        fontSize: 17,
-                      ),
+                  if (!isLast)
+                    Container(
+                      width: 3,
+                      height: 38,
+                      color: lineColor,
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      statusSubtext[statusOrder[idx]]!,
-                      style: TextStyle(
-                        color: active ? Colors.black54 : Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            )
-          ],
-        );
-      }),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        statusText[statusOrder[idx]] ?? '',
+                        style: TextStyle(
+                          color: isActive
+                              ? Colors.blue
+                              : (isCompleted ? Colors.green[900] : Colors.grey),
+                          fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        statusSubtext[statusOrder[idx]] ?? '',
+                        style: TextStyle(
+                          color: isCompleted || isActive
+                              ? Colors.black54
+                              : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            ],
+          );
+        },
+      ),
     );
   }
 }

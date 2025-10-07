@@ -174,9 +174,9 @@ Widget build(BuildContext context) {
                   right: 6,
                   child: Consumer<FavoriteProvider>(
                     builder: (context, favProvider, _) {
-                      final isFav = favProvider.isFavorite(subCat.id);
+                      final isFav = favProvider.isFavorite((subCat.id).toString());
                       return GestureDetector(
-                        onTap: () => favProvider.toggleFavorite(subCat.id),
+                        onTap: () => favProvider.toggleFavorite(subCat.id.toString()),
                         child: Material(
                           color: Colors.transparent,
                           child: CircleAvatar(
@@ -250,8 +250,8 @@ Widget build(BuildContext context) {
 
 
     List<String> images = [
-      if (box.boxImage.isNotEmpty) box.boxImage,
-      if (box.actualImage.isNotEmpty) box.actualImage,
+      if (box.boxImage != null && box.boxImage!.isNotEmpty) box.boxImage!,
+      if (box.actualImage != null && box.actualImage!.isNotEmpty) box.actualImage!,
     ];
 
     return Card(

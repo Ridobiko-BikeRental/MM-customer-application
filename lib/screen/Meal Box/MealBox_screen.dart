@@ -17,28 +17,26 @@ class MealBoxScreen extends StatefulWidget {
 }
 
 class _MealBoxScreenState extends State<MealBoxScreen> {
-  //int _selectedIndex = 2; // Third tab selected for MealBox
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
-  super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    try {
-      await Provider.of<FavoriteProvider>(context, listen: false).fetchFavorites();
-    } catch (e) {
-      print('Error fetching favorites: $e');
-    }
-    try {
-      await Provider.of<MealboxProvider>(context, listen: false).fetchMealboxes();
-    } catch (e) {
-      print('Error fetching mealboxes: $e');
-    }
-  });
-
-}
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await Provider.of<FavoriteProvider>(context, listen: false).fetchFavorites();
+      } catch (e) {
+        print('Error fetching favorites: $e');
+      }
+      try {
+        await Provider.of<MealboxProvider>(context, listen: false).fetchMealboxes();
+      } catch (e) {
+        print('Error fetching mealboxes: $e');
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -64,17 +62,10 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
 
     return Scaffold(
       key: scaffoldKey,
-      endDrawer: const CartScreen(),
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: Icon(Icons.arrow_back, color: AppColors.buttonText),
-                onPressed: () => Navigator.pop(context),
-              )
-            : null,
         automaticallyImplyLeading: false,
         title: Text(
           'Meal Boxes',
@@ -91,7 +82,7 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
                   shape: const CircleBorder(),
                   child: InkWell(
                     customBorder: const CircleBorder(),
-                    onTap: () => scaffoldKey.currentState?.openEndDrawer(),
+                    onTap: () => Navigator.pushNamed(context, '/checkout'),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: Icon(
@@ -108,14 +99,8 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
                     builder: (_, cart, __) {
                       if (cart.totalItems == 0) return const SizedBox.shrink();
                       return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
                         alignment: Alignment.center,
                         child: Text(
                           '${cart.totalItems}',
@@ -159,27 +144,27 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
             child: mealboxProvider.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : (mealboxProvider.errorMessage != null)
-                ? Center(
-                    child: Text(
-                      mealboxProvider.errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  )
-                : filteredBoxes.isEmpty
-                ? const Center(child: Text("No meal boxes found"))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: filteredBoxes.length,
-                    itemBuilder: (_, index) {
-                      final box = filteredBoxes[index];
-                      return buildMealBoxCard(
-                        context,
-                        box,
-                        favoriteProvider,
-                        cartProvider,
-                      );
-                    },
-                  ),
+                    ? Center(
+                        child: Text(
+                          mealboxProvider.errorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      )
+                    : filteredBoxes.isEmpty
+                        ? const Center(child: Text("No meal boxes found"))
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            itemCount: filteredBoxes.length,
+                            itemBuilder: (_, index) {
+                              final box = filteredBoxes[index];
+                              return buildMealBoxCard(
+                                context,
+                                box,
+                                favoriteProvider,
+                                cartProvider,
+                              );
+                            },
+                          ),
           ),
         ],
       ),
@@ -195,10 +180,9 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
   ) {
     final isFav = favProvider.isFavorite(box.id, isMealBox: true);
 
-
     List<String> images = [
-      if (box.boxImage.isNotEmpty) box.boxImage,
-      if (box.actualImage.isNotEmpty) box.actualImage,
+      if (box.boxImage != null && box.boxImage?.isNotEmpty == true) box.boxImage!,
+      if (box.actualImage != null && box.actualImage?.isNotEmpty == true) box.actualImage!,
     ];
 
     return Material(
@@ -222,27 +206,51 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    MealBoxImageCarousel(
-                  images: images,
-                  height: 190,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                    Stack(
+                      children: [
+                        MealBoxImageCarousel(
+                          images: images,
+                          height: 190,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        if (box.sampleAvailable)
+                          Positioned(
+                            bottom: 12,
+                            right: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.amber, size: 16),
+                                  const SizedBox(width: 5),
+                                  const Text(
+                                    "Sample Available",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       box.title.replaceAll('"', '').trim(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
                       box.description.replaceAll('"', '').trim(),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -267,73 +275,73 @@ class _MealBoxScreenState extends State<MealBoxScreen> {
                         children: [
                           Text(
                             "₹${box.price}",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 17,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
                           ),
                           Row(
                             children: [
-                              if (box.sampleAvailable)
                                 ElevatedButton(
                                   onPressed: () {
+                                    Navigator.pushNamed(context, '/checkout');
                                     cartProvider.addToCart(box);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text(
-                                          "Added sample meal box to cart",
+                                          "Added meal box to cart",
                                         ),
                                       ),
                                     );
                                   },
                                   style: ElevatedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 3,
+                                      horizontal: 17,
+                                      vertical: 7,
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
+                                    
                                     backgroundColor: AppColors.primary,
                                     foregroundColor: AppColors.buttonText,
                                   ),
-                                  child: const Text("Order Sample"),
+                                  child: const Text("Order",style: TextStyle(fontSize: 16),),
                                 ),
                               const SizedBox(width: 3),
-                              IconButton(
-                                icon: const Icon(Icons.add_circle),
-                                color: AppColors.primary,
-                                iconSize: 30,
-                                onPressed: () {
-                                  cartProvider.addToCart(box);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Added meal box to cart"),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
+                          IconButton(
+                            icon: const Icon(Icons.add_circle),
+                            color: AppColors.primary,
+                            iconSize: 39,
+                            onPressed: () {
+                              cartProvider.addToCart(box);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Added meal box to cart"),
+                                ),
+                              );
+                            },
+                            padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                      maxWidth: 22,
+                      maxHeight: 36,
+                    ),
                           ),
+                          
                         ],
                       ),
+                        ]
                     ),
+                    )
                   ],
                 ),
               ),
-              // The heart icon in top right corner overlaid with Positioned in Stack
               Positioned(
                 top: 12,
                 right: 18,
                 child: GestureDetector(
-                  onTap: () async{
-                    try{
+                  onTap: () async {
+                    try {
                       await favProvider.toggleFavorite(box.id, isMealBox: true);
-
-                    }
-                    catch (e){
+                    } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to update favorite'))
+                        const SnackBar(content: Text('Failed to update favorite'))
                       );
                     }
                   },

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+/* import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../app_colors.dart';
 import '../../providers/cart_provider.dart';
@@ -12,9 +12,8 @@ class CartScreen extends StatelessWidget {
     final width = MediaQuery.of(context).size.width * 0.75;
     final cart = Provider.of<CartProvider>(context);
 
-    return Drawer(
-      width: width,
-      child: Consumer<CartProvider>(
+    return Scaffold(
+      body: Consumer<CartProvider>(
         builder: (context, cart, _) => Container(
           decoration: BoxDecoration(
             color: AppColors.primary,
@@ -26,20 +25,17 @@ class CartScreen extends StatelessWidget {
               // Header
               Row(
                 children: [
-                  Icon(
-                    Icons.shopping_cart,
-                    color: AppColors.secondary,
-                    size: 32,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    "Cart",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontSize: 26,
-                    ),
-                  ),
+          IconButton(
+            icon: Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+          Text(
+            "Filter",
+            style: TextStyle(
+                color: AppColors.buttonText, fontSize: 24),
+          ),
                 ],
               ),
               SizedBox(height: 8),
@@ -80,9 +76,9 @@ class CartScreen extends StatelessWidget {
                       return CartProductTile(
                         cartItem: cartItem,
                         onIncrement: () =>
-                            cart.incrementQuantity(cartItem.product.id),
+                            cart.incrementQuantityBy(cartItem.product.id),
                         onDecrement: () =>
-                            cart.decrementQuantity(cartItem.product.id),
+                            cart.decrementQuantityBy(cartItem.product.id),
                       );
                     },
                   ),
@@ -296,4 +292,4 @@ class BillSection extends StatelessWidget {
       ),
     );
   }
-}
+} */

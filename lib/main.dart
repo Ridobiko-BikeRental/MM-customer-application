@@ -4,6 +4,7 @@ import 'package:yumquick/API/address_api.dart';
 import 'package:yumquick/API/auth_api.dart';
 import 'package:yumquick/API/favorite_api.dart';
 import 'package:yumquick/providers/MealBox_provider.dart';
+import 'package:yumquick/screen/Filter_screen.dart';
 import 'package:yumquick/screen/Order/Tracking_screen.dart';
 import 'package:yumquick/screen/SeeReviews_screen.dart';
 import 'package:yumquick/screen/auth_screen/login_screen.dart';
@@ -13,6 +14,8 @@ import 'package:yumquick/screen/Order/CancelOrder_screen.dart';
 import 'package:yumquick/screen/Home_screen.dart';
 import 'package:yumquick/screen/Order/MyOrder_screen.dart';
 import 'package:yumquick/screen/Address/UpdateAddress_screen.dart';
+import 'package:yumquick/screen/cart/cart_screen.dart';
+import 'package:yumquick/screen/cart/slotBooking_screen.dart';
 import 'package:yumquick/screen/profile/Updateprofile_screen.dart';
 import 'package:yumquick/screen/Address/address_screen.dart';
 import 'package:yumquick/screen/cart/checkout_screen.dart';
@@ -90,6 +93,38 @@ class MyApp extends StatelessWidget {
       ),
     );
   }
+  /* if (settings.name == '/orderConfirm') {
+  // Expecting arguments as String orderId
+  final orderId = settings.arguments as String?;
+  if (orderId == null) {
+    return MaterialPageRoute(builder: (_) => Scaffold(
+      body: Center(child: Text('Order ID is required')),
+    ));
+  }
+  return MaterialPageRoute(
+    builder: (_) => OrderConfirmedScreen(orderId: orderId),
+  );
+} */
+ if (settings.name == '/slot_booking') {
+    final args = settings.arguments as Map<String, dynamic>?;
+    return MaterialPageRoute(
+      builder: (_) => SlotBookingScreen(cartItems: args?['cartItems'] ?? []),
+    );
+  }
+if (settings.name == '/tracking') {
+  final orderId = settings.arguments as String?;
+  if (orderId == null) {
+  return MaterialPageRoute(
+    builder: (_) => Scaffold(
+      body: Center(child: Text('Order ID is required to track the order.')),
+    ),
+  );
+}
+  return MaterialPageRoute(
+    builder: (_) => TrackingScreen(orderId: orderId),
+  );
+}
+
         // Handle other routes or default
         return null; // Or MaterialPageRoute for your home/other screens
       },
@@ -106,13 +141,13 @@ class MyApp extends StatelessWidget {
         '/updateaddress' : (context) => UpdateAddressScreen(),
         '/orders_screen' : (context) => MyOrderScreen(),
         '/checkout' : (context) => CheckoutScreen(),
-        '/orderConfirm' : (context) => OrderConfirmedScreen(),
+        //'/cart' : (context) => CartScreen(),
         '/favourite': (context) => FavoritesScreen(),
         '/history' : (context) => HistoryScreen(),
         '/mealbox_SubCat' : (context) => SubCategoriesScreen(),
-        '/SeeReviews' : (context) => SeeReview_screen(),
-        '/tracking': (context) => TrackingScreen(),
-        // Add other routes if needed
+        //'/SeeReviews' : (context) => SeeReview_screen(),
+        '/filter_screen': (context) => const FilterScreen(),
+        '/orderConfirm' : (context) => const OrderPlacedScreen(orderId: '', customerOrderId: ''),
       },
     );
   }
